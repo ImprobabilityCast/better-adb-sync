@@ -114,7 +114,7 @@ def get_cli_args(docstring: str, version: str) -> Args:
     parser_adb.add_argument("--adb-bin",
         help = "Use the given adb binary. Defaults to 'adb' ie whatever is on path",
         dest = "adb_bin",
-        default = "adb")
+        default = None)
     parser_adb.add_argument("--adb-flag",
         help = "Add a flag to call adb with, eg '--adb-flag d' for adb -d, that is return an error if more than one device is connected",
         metavar = "ADB_FLAG",

@@ -10,6 +10,7 @@ import os
 import stat
 from typing import List, Tuple, Union
 
+from BetterADBSync import adb
 from .FileSystems.Android import AndroidFileSystem
 from .FileSystems.Base import FileSystem
 from .FileSystems.Local import LocalFileSystem
@@ -342,7 +343,11 @@ def main():
         with exclude_from_pathname.open("r") as f:
             args.exclude.extend(line for line in f.read().splitlines() if line)
 
-    adb_arguments = [args.adb_bin] + [f"-{arg}" for arg in args.adb_flags]
+    if args.adb_bin is None:
+        adb_bin = adb.find_adb_executable()
+    else:
+        adb_bin = args.adb_bin
+    adb_arguments = [adb_bin] + [f"-{arg}" for arg in args.adb_flags]
     for option, value in args.adb_options:
         adb_arguments.append(f"-{option}")
         adb_arguments.append(value)
