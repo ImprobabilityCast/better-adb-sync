@@ -22,7 +22,6 @@ def find_adb_executable():
     for path in path_env:
         path = path.strip('"')  # handle quoted PATH entries
         candidate = os.path.join(path, adb_executable)
-        print(candidate)
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
 
