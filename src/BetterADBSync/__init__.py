@@ -7,6 +7,7 @@ import fnmatch
 import importlib.metadata
 import logging
 import os
+import pathlib
 import stat
 from typing import List, Tuple, Union
 
@@ -250,6 +251,46 @@ class FileSyncer():
         return delete, copy, excluded_source, unaccounted_destination, excluded_destination
 
     @classmethod
+    def remove_from_tree(cls, path, tree):
+        parts = list(p for p in path.parts)
+        parent = tree
+        while len(parts) > 1:
+            parent = parent[parts.pop(0)]
+        parent.pop(parts.pop())
+
+    @classmethod
+    def flatten(cls, tree: dict) -> list:
+        result = []
+        if tree is None:
+            return result
+        for k, v in tree.items():
+            if isinstance(v, dict):
+                for p in cls.flatten(v):
+                    result.append(pathlib.Path(os.path.join(k, p)))
+            else:
+                result.append(pathlib.Path(k))
+        return result
+    
+    @classmethod
+    def filter_mv(cls, tree_idc, tree_copy, src_fs: FileSystem, dst_fs: FileSystem, src_path, dst_path) -> list:
+        result = []
+        flat_idk = cls.flatten(tree_idc)
+        flat_copy = cls.flatten(tree_copy)
+
+        for cp in flat_copy:
+            dp_filtered = [dp for dp in flat_idk if cp.name == dp.name]
+            if len(dp_filtered) > 0:
+                real_cp = os.path.join(src_path, cp)
+                real_dp = os.path.join(dst_path, dp_filtered[0])
+                hash1 = src_fs.hash(real_cp)
+                hash2 = dst_fs.hash(real_dp)
+                if hash1 == hash2:
+                    result.append((real_dp, os.path.join(dst_path, cp)))
+                    cls.remove_from_tree(dp_filtered[0], tree_idc)
+                    cls.remove_from_tree(cp, tree_copy)
+        return result
+
+    @classmethod
     def remove_excluded_folders_from_unaccounted_tree(cls, unaccounted: Union[dict, Tuple[int, int]], excluded: Union[dict, None]) -> dict:
         # For when we have --del but not --delete-excluded selected; we do not want to delete unaccounted folders that are the
         # parent of excluded items. At the point in the program that this function is called at either
@@ -388,15 +429,16 @@ def main():
     except (NotADirectoryError, PermissionError) as e:
         perror(path_destination, e, FATAL)
 
-    logging.info("Source tree:")
-    if files_tree_source is not None:
-        log_tree(path_source, files_tree_source)
-    logging.info("")
+    if not args.logging_verbosity_less:
+        logging.info("Source tree:")
+        if files_tree_source is not None:
+            log_tree(path_source, files_tree_source)
+        logging.info("")
 
-    logging.info("Destination tree:")
-    if files_tree_destination is not None:
-        log_tree(path_destination, files_tree_destination)
-    logging.info("")
+        logging.info("Destination tree:")
+        if files_tree_destination is not None:
+            log_tree(path_destination, files_tree_destination)
+        logging.info("")
 
     if isinstance(files_tree_source, dict):
         exclude_patterns = [fs_destination.normpath(
@@ -433,30 +475,38 @@ def main():
     tree_unaccounted_destination = FileSyncer.sort_tree(tree_unaccounted_destination)
     tree_excluded_destination    = FileSyncer.sort_tree(tree_excluded_destination)
 
-    logging.info("Delete tree:")
-    if tree_delete is not None:
-        log_tree(path_destination, tree_delete, log_leaves_types = False)
-    logging.info("")
+    mv_list = FileSyncer.filter_mv(tree_unaccounted_destination, tree_copy, fs_source, fs_destination, path_source, path_destination)
 
-    logging.info("Copy tree:")
-    if tree_copy is not None:
-        log_tree(f"{path_source} --> {path_destination}", tree_copy, log_leaves_types = False)
-    logging.info("")
+    if not args.logging_verbosity_less:
+        logging.info("Delete tree:")
+        if tree_delete is not None:
+            log_tree(path_destination, tree_delete, log_leaves_types = False)
+        logging.info("")
 
-    logging.info("Source excluded tree:")
-    if tree_excluded_source is not None:
-        log_tree(path_source, tree_excluded_source, log_leaves_types = False)
-    logging.info("")
+        logging.info("Copy tree:")
+        if tree_copy is not None:
+            log_tree(f"{path_source} --> {path_destination}", tree_copy, log_leaves_types = False)
+        logging.info("")
 
-    logging.info("Destination unaccounted tree:")
-    if tree_unaccounted_destination is not None:
-        log_tree(path_destination, tree_unaccounted_destination, log_leaves_types = False)
-    logging.info("")
+        logging.info("Source excluded tree:")
+        if tree_excluded_source is not None:
+            log_tree(path_source, tree_excluded_source, log_leaves_types = False)
+        logging.info("")
 
-    logging.info("Destination excluded tree:")
-    if tree_excluded_destination is not None:
-        log_tree(path_destination, tree_excluded_destination, log_leaves_types = False)
-    logging.info("")
+        logging.info("Destination unaccounted tree:")
+        if tree_unaccounted_destination is not None:
+            log_tree(path_destination, tree_unaccounted_destination, log_leaves_types = False)
+        logging.info("")
+
+    logging.info("Move list:")
+    for src, dst in mv_list:
+        print("{} => {}".format(src, dst))
+
+    if not args.logging_verbosity_less:
+        logging.info("Destination excluded tree:")
+        if tree_excluded_destination is not None and not args.logging_verbosity_less:
+            log_tree(path_destination, tree_excluded_destination, log_leaves_types = False)
+        logging.info("")
 
 
     tree_unaccounted_destination_non_excluded = None
@@ -481,6 +531,13 @@ def main():
         fs_destination.remove_tree(path_destination, tree_delete, dry_run = args.dry_run)
     else:
         logging.info("Empty delete tree")
+    logging.info("")
+
+
+    logging.info("Moving movables:")
+    for src, dst in mv_list:
+        print("Moving {} => {}".format(src, dst))
+        fs_destination.mv(str(src), str(dst), dry_run=args.dry_run)
     logging.info("")
 
     if args.delete_excluded and args.delete:

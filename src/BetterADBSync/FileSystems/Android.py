@@ -72,12 +72,14 @@ class AndroidFileSystem(FileSystem):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT
         )
+        offset = datetime.datetime.now(datetime.timezone.utc).astimezone().utcoffset()
+        self.tz_offset = offset.total_seconds()
 
     def __del__(self):
         self.proc_adb_shell.stdin.close()
         self.proc_adb_shell.wait()
 
-    def adb_shell(self, commands: List[str]) -> Iterator[str]:
+    def shell(self, commands: List[str]) -> Iterator[str]:
         self.proc_adb_shell.stdin.write(shlex.join(commands).encode(self.adb_encoding))
         self.proc_adb_shell.stdin.write(" </dev/null\n".encode(self.adb_encoding))
         self.proc_adb_shell.stdin.write(shlex.join(["echo", self.ADBSYNC_END_OF_COMMAND]).encode(self.adb_encoding))
@@ -105,7 +107,7 @@ class AndroidFileSystem(FileSystem):
         logging_fatal(line)
 
     def test_connection(self):
-        for line in self.adb_shell([":"]):
+        for line in self.shell([":"]):
             print(line)
 
             if self.RE_TESTCONNECTION_DAEMON_NOT_RUNNING.fullmatch(
@@ -163,19 +165,19 @@ class AndroidFileSystem(FileSystem):
         return "/"
 
     def unlink(self, path: str) -> None:
-        for line in self.adb_shell(["rm", path]):
+        for line in self.shell(["rm", path]):
             self.line_not_captured(line)
 
     def rmdir(self, path: str) -> None:
-        for line in self.adb_shell(["rm", "-r", path]):
+        for line in self.shell(["rm", "-r", path]):
             self.line_not_captured(line)
 
     def makedirs(self, path: str) -> None:
-        for line in self.adb_shell(["mkdir", "-p", path]):
+        for line in self.shell(["mkdir", "-p", path]):
             self.line_not_captured(line)
 
     def realpath(self, path: str) -> str:
-        for line in self.adb_shell(["realpath", path]):
+        for line in self.shell(["realpath", path]):
             if self.RE_REALPATH_NO_SUCH_FILE.fullmatch(line):
                 raise FileNotFoundError(f'On Android: "{line}"')
             elif self.RE_REALPATH_NOT_A_DIRECTORY.fullmatch(line):
@@ -185,11 +187,11 @@ class AndroidFileSystem(FileSystem):
             # permission error possible?
 
     def lstat(self, path: str) -> os.stat_result:
-        for line in self.adb_shell(["ls", "-ladb", path]):
+        for line in self.shell(["ls", "-ladb", path]):
             return self.ls_to_stat(line)[1]
 
     def lstat_in_dir(self, path: str) -> Iterable[Tuple[str, os.stat_result]]:
-        for line in self.adb_shell(["ls", "-lab", path]):
+        for line in self.shell(["ls", "-lab", path]):
             if self.RE_TOTAL.fullmatch(line):
                 continue
             else:
@@ -199,7 +201,7 @@ class AndroidFileSystem(FileSystem):
         base = datetime.datetime(1970, 1, 1)
         atime = (base + datetime.timedelta(seconds=times[0])).strftime("%Y%m%d%H%M")
         mtime = (base + datetime.timedelta(seconds=times[1])).strftime("%Y%m%d%H%M")
-        for line in self.adb_shell(["touch", "-at", atime, "-mt", mtime, path]):
+        for line in self.shell(["touch", "-at", atime, "-mt", mtime, path]):
             self.line_not_captured(line)
 
     def join(self, base: str, leaf: str) -> str:

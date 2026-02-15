@@ -8,6 +8,7 @@ class Args():
     logging_no_color: bool
     logging_verbosity_verbose: int
     logging_verbosity_quiet: int
+    logging_verbosity_less: bool
 
     dry_run: bool
     copy_links: bool
@@ -55,6 +56,12 @@ def get_cli_args(docstring: str, version: str) -> Args:
         help = "Decrease logging verbosity: -q for warning, -qq for error, -qqq for critical, -qqqq for no logging messages",
         action = "count",
         dest = "logging_verbosity_quiet",
+        default = 0
+    )
+    parser_logging_verbosity.add_argument("--less",
+        help = "Hides source, destination, and exclude trees from logging output",
+        action = "store_true",
+        dest = "logging_verbosity_less",
         default = 0
     )
 
@@ -181,6 +188,7 @@ def get_cli_args(docstring: str, version: str) -> Args:
         args.logging_no_color,
         args.logging_verbosity_verbose,
         args.logging_verbosity_quiet,
+        args.logging_verbosity_less,
 
         args.dry_run,
         args.copy_links,

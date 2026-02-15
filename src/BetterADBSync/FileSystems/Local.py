@@ -1,4 +1,4 @@
-from typing import Iterable, Tuple
+from typing import Iterable, Iterator, List, Tuple
 import os
 import subprocess
 import logging
@@ -8,6 +8,10 @@ from ..SAOLogging import logging_fatal
 from .Base import FileSystem
 
 class LocalFileSystem(FileSystem):
+    def shell(self, commands: List[str]) -> Iterator[str]:
+        lines_to_yield = subprocess.check_output(commands).split(b'\n')
+        return [line.decode("UTF-8").rstrip("\r") for line in lines_to_yield]
+
     @property
     def sep(self) -> str:
         return os.path.sep

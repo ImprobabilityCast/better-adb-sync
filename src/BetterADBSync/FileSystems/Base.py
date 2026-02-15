@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Iterable, List, Tuple, Union
+from typing import Iterable, Iterator, List, Tuple, Union
 import logging
 import os
 import stat
@@ -9,6 +9,7 @@ from ..SAOLogging import perror
 class FileSystem():
     def __init__(self, adb_arguments: List[str]) -> None:
         self.adb_arguments = adb_arguments
+        self.tz_offset = 0
 
     def _get_files_tree(self, tree_path: str, tree_path_stat: os.stat_result, follow_links: bool = False):
         # the reason to have two functions instead of one purely recursive one is to use self.lstat_in_dir ie ls
@@ -26,7 +27,7 @@ class FileSystem():
                 return None
             return self._get_files_tree(tree_path_realpath, tree_path_stat_realpath, follow_links = follow_links)
         elif stat.S_ISDIR(tree_path_stat.st_mode):
-            tree = {".": (60 * (int(tree_path_stat.st_atime) // 60), 60 * (int(tree_path_stat.st_mtime) // 60))}
+            tree = {".": (60 * (int(tree_path_stat.st_atime - self.tz_offset) // 60), 60 * (int(tree_path_stat.st_mtime - self.tz_offset) // 60))}
             for filename, stat_object_child, in self.lstat_in_dir(tree_path):
                 if filename in [".", ".."]:
                     continue
@@ -36,7 +37,7 @@ class FileSystem():
                     follow_links = follow_links)
             return tree
         elif stat.S_ISREG(tree_path_stat.st_mode):
-            return (60 * (int(tree_path_stat.st_atime) // 60), 60 * (int(tree_path_stat.st_mtime) // 60)) # minute resolution
+            return (60 * (int(tree_path_stat.st_atime - self.tz_offset) // 60), 60 * (int(tree_path_stat.st_mtime - self.tz_offset) // 60)) # minute resolution
         else:
             raise NotImplementedError
 
@@ -99,6 +100,17 @@ class FileSystem():
                 )
         else:
             raise NotImplementedError
+
+    def shell(self, commands: List[str]) -> Iterator[str]:
+        raise NotImplementedError
+    
+    def mv(self, og, dst, dry_run):
+        if not dry_run:
+            for line in self.shell(["mv", og, dst]):
+                print(line)
+
+    def hash(self, path) -> str:
+        return list(self.shell(["sha256sum", "-b", path]))[0].split(' ')[0]
 
     # Abstract methods below implemented in Local.py and Android.py
 
